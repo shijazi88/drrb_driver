@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "266970192088",
+    "project_id": "drrb-driver",
+    "storage_bucket": "drrb-driver.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:266970192088:android:a56afda7ad6ceeb8221fad",
+        "android_client_info": {
+          "package_name": "com.drrb.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoTe3zQsIwn_So9418_EfeT_LeJBKa1hE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
