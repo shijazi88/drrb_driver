@@ -194,7 +194,7 @@ class Trip extends Component {
         // console.log(res)
         //this.props.setPlaceId(res.results.length > 0 ? res.results[0].place_id : null);
         this.setState({
-          selectedAddressInfo: res.results[0].formatted_address
+          selectedAddressInfo: res.results.length > 0 ? res.results[0].formatted_address : null,
         })
         // console.log("Place ID : ", res.results.length > 0 ? res.results[0].formatted_address : null)
         // this.props.setCoordinates({
