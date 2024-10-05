@@ -276,6 +276,7 @@
         "vatID":"الرقم الضريبي",
         "service":"الخدمة",
         "renewSub":"تجديد الإشتراك",
-        "renewSubdiscription":"قم بتجديد الإشتراك الآن "
+        "renewSubdiscription":"قم بتجديد الإشتراك الآن ",
+        "arrived":"لقد وصلت"
     }
 }

@@ -278,6 +278,7 @@
         "vatID":"VAT ID",
         "service":"Service",
         "renewSub":"Renew Subscription",
-        "renewSubdiscription":"Renew your subscription now"
+        "renewSubdiscription":"Renew your subscription now",
+        "arrived":"I Arrived"
     }
 }

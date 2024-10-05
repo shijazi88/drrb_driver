@@ -1,68 +1,61 @@
-import i18next from 'i18next'
-import ar from './arabic.json'
-import en from './english.json'
-import { initReactI18next } from 'react-i18next'
+import i18next from 'i18next';
+import ar from './arabic.json';
+import en from './english.json';
+import { initReactI18next } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as RNLocalize from "react-native-localize";
-import { I18nManager } from "react-native";
+import RNRestart from 'react-native-restart'; // Make sure to import this
+import { I18nManager } from 'react-native';
 
-const LANGUAGES = {ar, en};
-const LANG_CODES = Object.keys(LANGUAGES);
+const LANGUAGES = { ar, en };
 
 const LANGUAGE_DETECTOR = {
-    type: 'languageDetector',
-    async: true,
-    detect: callback => {
-        AsyncStorage.getItem('user-language', (err, language) => {
-            // if error fetching stored data or no language was stored
-            // display errors when in DEV mode as console statements
-            if (err || !language) {
-                if (err) {
-                    // console.log('Error fetching Languages from asyncstorage ', err);
-                } else {
-                    // console.log('No language is set, choosing Arabic as fallback');
-                }
-                return;
-            }
-            // console.log(language)
-            // Is it a RTL language?
-            const isRTL = language.indexOf('ar') === 0;
+  type: 'languageDetector',
+  async: true,
+  detect: async (callback) => { // Use async/await for cleaner code
+    try {
+      const language = await AsyncStorage.getItem('user-language');
+      const detectedLanguage = language || 'en'; // Default to English if no language found
+      const isRTL = detectedLanguage.indexOf('ar') === 0;
 
-            // Allow RTL alignment in RTL languages
-            I18nManager.allowRTL(!isRTL);
-            I18nManager.forceRTL(!isRTL);
+      // Check if the current layout direction matches the language
+      if (I18nManager.isRTL !== isRTL) {
+        I18nManager.forceRTL(isRTL);
+        RNRestart.Restart(); // Restart the app to apply changes
+      }
 
-            callback(language);
-        });
-    },
-    init: () => {
-    },
-    cacheUserLanguage: language => {
-        AsyncStorage.setItem('user-language', language);
-        // Is it a RTL language?
-        const isRTL = language.indexOf('ar') === 0;
-
-        // Allow RTL alignment in RTL languages
-        I18nManager.allowRTL(!isRTL);
-        I18nManager.forceRTL(!isRTL);
+      callback(detectedLanguage);
+    } catch (error) {
+      console.error("Error detecting language: ", error);
+      callback('en'); // Fallback to English on error
     }
+  },
+  cacheUserLanguage: async (language) => {
+    try {
+      await AsyncStorage.setItem('user-language', language);
+      const isRTL = language.indexOf('ar') === 0;
+
+      if (I18nManager.isRTL !== isRTL) {
+        I18nManager.forceRTL(isRTL);
+        RNRestart.Restart(); // Restart the app after setting RTL
+      }
+    } catch (error) {
+      console.error("Error caching user language: ", error);
+    }
+  }
 };
 
 i18next
-    // detect language
-    .use(LANGUAGE_DETECTOR)
-    .use(initReactI18next).init({
-        compatibilityJSON: 'v3',
-        //remove if detector is on
-        // lng: 'ar',
-        fallbackLng: 'en',
+  .use(LANGUAGE_DETECTOR)
+  .use(initReactI18next).init({
+    compatibilityJSON: 'v3',
+    fallbackLng: 'en',
+    resources: LANGUAGES,
+    react: {
+      useSuspense: false
+    },
+    interpolation: {
+      escapeValue: false // React already does escaping
+    }
+  });
 
-        resources: LANGUAGES,
-        react: {
-            useSuspense: false
-        },
-        interpolation: {
-            escapeValue: false
-        }
-    });
-export default i18next
+export default i18next;

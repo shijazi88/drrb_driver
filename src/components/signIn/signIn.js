@@ -29,6 +29,7 @@ import { environment, services } from "../../api/api";
 let width = Dimensions.get("window").width;
 import DeviceInfo from 'react-native-device-info';
 import messaging from '@react-native-firebase/messaging';
+import i18next from '../../../languages/i18n';
 
 class SignIn extends Component {
 
@@ -270,7 +271,7 @@ class SignIn extends Component {
                       color: colors.white,
                       fontSize: normalize(12), fontWeight: 'bold',
                     }}
-                    endIcon={<Icon as={Icon} name={I18nManager.isRTL ? 'arrowleft' : 'arrowright'} color={colors.white} size={18} />}
+                    endIcon={<Icon as={Icon} name={i18next.language == 'ar' ? 'arrowleft' : 'arrowright'} color={colors.white} size={18} />}
                   >
                     {this.props.t('login')}
                   </Button>

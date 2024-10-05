@@ -11,7 +11,7 @@ import {
   FlatList, TouchableOpacity, RefreshControl, AppState, Linking,
 } from 'react-native';
 import {
-  Text, NativeBaseProvider, Button, Link, VStack, IconButton, Badge, AlertDialog
+  Text, NativeBaseProvider, Button, Link, HStack, IconButton, Badge, AlertDialog
 } from 'native-base'
 import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,6 +29,7 @@ import { helpers } from '../../utils';
 import { environment, services } from "../../api/api";
 import { PERMISSIONS, check, RESULTS, request } from "react-native-permissions";
 import Geolocation from '@react-native-community/geolocation';
+import i18next from '../../../languages/i18n';
 
 let width = Dimensions.get("window").width;
 
@@ -40,7 +41,7 @@ function Filters({ data, selected }) {
   }
   return (
     <View style={isSelected == true ? styles.filterItemSelected : styles.filterItem} >
-      <Text style={isSelected == true ? styles.filterItemTextSelected : styles.filterItemText} >{I18nManager.isRTL ? data.textar : data.text}</Text>
+      <Text style={isSelected == true ? styles.filterItemTextSelected : styles.filterItemText} >{i18next.language == 'ar' ? data.textar : data.text}</Text>
     </View>
   )
 }
@@ -407,7 +408,6 @@ class Home extends Component {
       this.props.navigation.goBack()
     }
 
-
     const locationPress = (data) => {
 
       console.log(data)
@@ -436,8 +436,6 @@ class Home extends Component {
           }
         });
     };
-
-
 
     const getFooter = () => {
       return <View style={{ marginBottom: 60 }}></View>
@@ -478,14 +476,22 @@ class Home extends Component {
                   <Image
                     style={{ height: 31, width: 118 }}
                     source={require('../../assets/images/drblogo.png')} />
-                  <VStack space={4} alignItems="center">
+                  <HStack space={4} alignItems="center">
                     <IconButton onPress={() => this.signOutPressed()} size="md" borderColor={colors.primary} borderRadius={10} variant="outline" _icon={{
                       as: MaterialIcons,
                       name: "power-settings-new",
                       color: colors.black,
                       // size: 22
                     }} />
-                  </VStack>
+                    <IconButton onPress={() => {
+                      i18next.changeLanguage(i18next.language == 'ar' ? 'en' : 'ar');
+                    }} size="md" borderColor={colors.primary} borderRadius={10} variant="outline" _icon={{
+                      as: MaterialIcons,
+                      name: "language",
+                      color: colors.black,
+                      // size: 22
+                    }} />
+                  </HStack>
                 </View>
                 <FlatList
                   data={filters}

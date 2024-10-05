@@ -33,6 +33,7 @@ import MapView from "react-native-maps";
 let width = Dimensions.get("window").width;
 let height = Dimensions.get("window").height;
 import { Linking } from 'react-native'
+import i18next from '../../../languages/i18n';
 
 class Trip extends Component {
 
@@ -47,8 +48,10 @@ class Trip extends Component {
       errorAlert: false,
       selectedLocation: "none",
       successAlert: false,
+      startNavigationDialog: false,
       userCurrentD_longitude: null,
       userCurrentD_latitude: null,
+      tripData: null,
     }
   }
 
@@ -72,13 +75,12 @@ class Trip extends Component {
     this.setState({
       token: token,
     })
-
+    console.log("this.props.route.params.tripData", this.props.route.params.tripData);
+    this.setState({
+      tripData: this.props.route.params.tripData,
+    })
     //Get Details
-
-
     this.putMarkerandLocation(false);
-
-
   }
 
   /**
@@ -212,7 +214,7 @@ class Trip extends Component {
             selectedLocation: { latitude: parseFloat(lat), longitude: parseFloat(lng) }
           },
           () => {
-            animate &&
+            animate && this.map &&
               this.map.animateToRegion(
                 { latitude: parseFloat(lat), longitude: parseFloat(lng) },
                 0
@@ -227,89 +229,105 @@ class Trip extends Component {
   }
   updateTripPressed = () => {
     console.log("HERE 31")
-    const { tripData } = this.props.route.params;
-    if (tripData.status == "PICKEDUP") {
-      console.log("HERE 32")
-      if (this.state.userCurrentD_latitude == null || this.state.userCurrentD_longitude == null) {
-        console.log("HERE 33")
-        this.setState({ message: this.props.t('pleaseGivePermissionForLocation'), errorAlert: true, loading: false, });
-        this.putMarkerandLocation(false);
+    const { tripData } = this.state;
+    if(tripData){
+      if (tripData.status == "ARRIVED") {
+        console.log("HERE 32")
+        if (this.state.userCurrentD_latitude == null || this.state.userCurrentD_longitude == null) {
+          console.log("HERE 33")
+          this.setState({ message: this.props.t('pleaseGivePermissionForLocation'), errorAlert: true, loading: false, });
+          this.putMarkerandLocation(false);
+        } else {
+          this.updateTrip(tripData.id)
+        }
       } else {
         this.updateTrip(tripData.id)
       }
-    } else {
-      this.updateTrip(tripData.id)
     }
   }
 
   updateTrip = (id) => {
-    console.log("HERE 1")
-    this.setState({ loading: true, message: '' });
-    const { tripData } = this.props.route.params;
-    let data = null
-    if (tripData.status == "PICKEDUP") {
-      data = {
-        method: 'POST',
-        body: JSON.stringify({
-          status: "COMPLETED",
-          d_latitude: this.state.userCurrentD_latitude,
-          d_longitude: this.state.userCurrentD_longitude,
-          c_lat: this.state.userCurrentD_latitude,
-          c_long: this.state.userCurrentD_longitude
-        }),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + this.state.token
-        }
+    const { tripData, userCurrentD_latitude, userCurrentD_longitude, token } = this.state;
+    console.log("HERE 1");
+    const self = this;
+    if(tripData.status == "COMPLETED"){
+      if (this.props.route.params != null) {
+        this.props.route.params.clickedYes(true);
       }
-    } else {
-      data = {
-        method: 'POST',
-        body: JSON.stringify({
-          status: "PICKEDUP",
-          c_lat: this.state.userCurrentD_latitude,
-          c_long: this.state.userCurrentD_longitude
-        }),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + this.state.token
-        }
-      }
+      this.props.navigation.goBack();
+      return;
     }
 
-    var proceed = false;
-    console.log("data", data)
-    fetch(environment.getEnvironment + services.sendRequest + id + "/status", data)
-      .then((response) => {
+    let statusUpdate = {};
+    this.setState({ loading: true, message: '' });
+    // Determine new status and coordinates based on current trip status
+    switch (tripData.status) {
+      case "ARRIVED":
+        statusUpdate = { status: "PICKEDUP" };
+        break;
+      case "PICKEDUP":
+        statusUpdate = { status: "DROPPED" };
+        break;
+      case "DROPPED":
+        statusUpdate = { status: "PAYMENT" };
+        break;
+      case "PAYMENT":
+        statusUpdate = { 
+          status: "COMPLETED", 
+          d_latitude: userCurrentD_latitude, 
+          d_longitude: userCurrentD_longitude 
+        };
+        break;
+      default:
+        statusUpdate = { status: "ARRIVED" };
+        break;
+    }
+  
+    // Add common coordinates
+    statusUpdate.c_lat = userCurrentD_latitude;
+    statusUpdate.c_long = userCurrentD_longitude;
+  
+    const requestOptions = {
+      method: 'POST',
+      body: JSON.stringify(statusUpdate),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      }
+    };
+  
+    console.log("Request Data", requestOptions);
+  
+    // Send request to update trip status
+    fetch(`${environment.getEnvironment}${services.sendRequest}${id}/status`, requestOptions)
+      .then(response => {
         const statusCode = response.status;
-        const data = response.json();
-        return Promise.all([statusCode, data]);
+        return response.json().then(data => ({ statusCode, data }));
       })
-      .then(([res, response]) => {
-        if (response.error) {
-          this.setState({ message: response.message, errorAlert: true, loading: false, })
+      .then(({ statusCode, data }) => {
+        if (data.error) {
+          this.setState({ message: data.message, errorAlert: true, loading: false });
+        } else if (statusCode === 401) {
+          this.setState({ message: this.props.t('errorMessageGeneral'), errorAlert: true, loading: false });
+        } else if (statusCode === 200) {
+          console.log("Updated Trip Data", data);
+          this.setState({
+            tripData: {...this.state.tripData,...data},
+            message: this.props.t('UpdateSuccess'),
+            // successAlert: (data.status !== "DROPPED"),
+            loading: false,
+            startNavigationDialog: (data.status == "PICKEDUP")
+          });
         } else {
-          if (res == 401) {
-            this.setState({ message: this.props.t('errorMessageGeneral'), errorAlert: true, loading: false, });
-          } else if (res == 200) {
-            proceed = true;
-            this.setState({
-              updateTripData: response,
-              loading: false,
-            })
-            this.setState({ message: this.props.t('UpdateSuccess'), loading: false, successAlert: true, });
-            console.log("response", response)
-          } else {
-            this.setState({ message: this.props.t('errorMessageGeneral'), errorAlert: true, loading: false, });
-          }
+          this.setState({ message: this.props.t('errorMessageGeneral'), errorAlert: true, loading: false });
         }
       })
       .catch(error => {
-        this.setState({ message: JSON.stringify(error), loading: false, errorAlert: true, });
-      })
-  }
+        this.setState({ message: JSON.stringify(error), loading: false, errorAlert: true });
+      });
+  };
+  
   locationPress = (data) => {
 
     console.log("HERE 2", data)
@@ -340,9 +358,8 @@ class Trip extends Component {
   };
 
   render() {
-    const { loading, data, selectedLocation } = this.state
+    const { loading, data, selectedLocation, tripData } = this.state
     let params = this.props.route.params || {};
-    const { tripData } = this.props.route.params;
 
     btnBack = () => {
       this.props.navigation.goBack()
@@ -350,49 +367,52 @@ class Trip extends Component {
 
     return (
       <NativeBaseProvider>
-        <MapView
-          showsMyLocationButton={true}
-          userInterfaceStyle={'light'}
-          mapType="terrain"
-          initialRegion={
-            selectedLocation === 'none'
-              ? {
-                latitude: tripData != null && tripData.d_latitude,
-                longitude: tripData != null && tripData.d_longitude,
-                latitudeDelta: 0.02,
-                longitudeDelta: 0.02,
-              }
-              : {
-                ...selectedLocation,
-                latitudeDelta: 0.03,
-                longitudeDelta: 0.03,
-              }
-          }
-          ref={(component) => (this.map = component)}
-          style={{
-            flex: 1,
-            // width,
-            // position: 'relative',
-            height,
-            backgroundColor: '#f23',
-          }}
-          scrollEnabled={false}
-          onRegionChangeComplete={(region) => this.renderCallout(region)}
-          showsUserLocation={true}>
+        {
+          tripData &&
+          <MapView
+            showsMyLocationButton={true}
+            userInterfaceStyle={'light'}
+            mapType="terrain"
+            initialRegion={
+              selectedLocation === 'none'
+                ? {
+                  latitude: tripData != null && tripData.d_latitude,
+                  longitude: tripData != null && tripData.d_longitude,
+                  latitudeDelta: 0.02,
+                  longitudeDelta: 0.02,
+                }
+                : {
+                  ...selectedLocation,
+                  latitudeDelta: 0.03,
+                  longitudeDelta: 0.03,
+                }
+            }
+            ref={(component) => (this.map = component)}
+            style={{
+              flex: 1,
+              // width,
+              // position: 'relative',
+              height,
+              backgroundColor: '#f23',
+            }}
+            scrollEnabled={false}
+            onRegionChangeComplete={(region) => this.renderCallout(region)}
+            showsUserLocation={true}>
 
-          {Platform.OS === 'ios' &&
-            (!params.permDisabled || this.state.selectedAddress) ? (
-            <MaterialIcons style={{
-              left: '50%',
-              marginLeft: -20,
-              marginTop: -57,
-              height: 60,
-              width: 60,
-              position: 'relative',
-              top: '50%',
-            }} color={colors.secondary} size={44} name="location-pin"></MaterialIcons>
-          ) : undefined}
-        </MapView>
+            {Platform.OS === 'ios' &&
+              (!params.permDisabled || this.state.selectedAddress) ? (
+              <MaterialIcons style={{
+                left: '50%',
+                marginLeft: -20,
+                marginTop: -57,
+                height: 60,
+                width: 60,
+                position: 'relative',
+                top: '50%',
+              }} color={colors.secondary} size={44} name="location-pin"></MaterialIcons>
+            ) : undefined}
+          </MapView>
+        }
         {Platform.OS === 'android' &&
           (!params.permDisabled || this.state.selectedAddress) ? (
           // <MaterialIcons style={{
@@ -432,148 +452,159 @@ class Trip extends Component {
             }} />
           </VStack>
         </View>
-        <View style={styles.tripListItemContainer}>
-          {tripData.status == "PICKEDUP" &&
-            <View style={{ justifyContent: 'space-between', flexDirection: 'row', }}>
-              <Text style={{
-                marginVertical: 10, marginHorizontal: 5,
-                flexShrink: 1,
-                alignSelf: 'center'
-              }} fontSize={normalize(12)} fontFamily={helpers.getFontBold()}>{this.props.t('theTripHasBeen')}</Text>
-              <Button
-                onPress={() => this.locationPress(tripData)}
-                // disabled={type !== "uocomingTrip"}
-                style={styles.drbButton}
-                size="sm"
-                _text={{
-                  color: colors.white,
-                  fontSize: normalize(12), fontWeight: 'bold',
-                }}>
-                {/* {this.props.t('viewTripLocation')} */}
-                {tripData.status == "PICKEDUP" ? this.props.t('dropoffLocation') : this.props.t('clientLocation') }
-              </Button>
-            </View>
-          }
-          {tripData.status != "PICKEDUP" &&
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <View style={{ flexDirection: 'row', }}>
-                <View style={styles.iconBackgroundRound}>
-                  <Fontisto color={colors.primary} size={16} style={{ alignSelf: 'center' }}
-                    name={tripData.gender == "MALE" ? "mars" : 'venus'}></Fontisto>
-                </View>
-                {tripData.user && <View style={{ justifyContent: 'center', marginHorizontal: 5, flexWrap: 'wrap' }}>
-                  <Text>{tripData.user.first_name} {tripData.user.last_name}</Text>
-                  <Text bold>{tripData.user.mobile}</Text>
-                </View>}
+        {
+          tripData &&
+          <View style={styles.tripListItemContainer}>
+            {tripData.status == "PICKEDUP" &&
+              <View style={{ justifyContent: 'space-between', flexDirection: 'row', }}>
+                <Text style={{
+                  marginVertical: 10, marginHorizontal: 5,
+                  flexShrink: 1,
+                  alignSelf: 'center'
+                }} fontSize={normalize(12)} fontFamily={helpers.getFontBold()}>{this.props.t('theTripHasBeen')}</Text>
+                <Button
+                  onPress={() => this.locationPress(tripData)}
+                  // disabled={type !== "uocomingTrip"}
+                  style={styles.drbButton}
+                  size="sm"
+                  _text={{
+                    color: colors.white,
+                    fontSize: normalize(12), fontWeight: 'bold',
+                  }}>
+                  {/* {this.props.t('viewTripLocation')} */}
+                  {tripData.status == "PICKEDUP" ? this.props.t('dropoffLocation') : this.props.t('clientLocation') }
+                </Button>
               </View>
-              <HStack space={4} alignItems="center">
-                <IconButton onPress={() => {
-                  Linking.openURL(`tel:${tripData.user.mobile}`)
-                }} size="md" backgroundColor={colors.primary} borderRadius={10} variant="solid" _icon={{
-                  as: MaterialIcons,
-                  name: "phone",
-                  color: colors.white,
-                  size: 22
-                }} />
-                <IconButton onPress={() => Linking.openURL(`mailto:${tripData.user.email}`)}
-                  size="md" backgroundColor={colors.primary} borderRadius={10} variant="solid" _icon={{
+            }
+            {tripData.status != "PICKEDUP" &&
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', }}>
+                  <View style={styles.iconBackgroundRound}>
+                    <Fontisto color={colors.primary} size={16} style={{ alignSelf: 'center' }}
+                      name={tripData.gender == "MALE" ? "mars" : 'venus'}></Fontisto>
+                  </View>
+                  {tripData.user && <View style={{ justifyContent: 'center', marginHorizontal: 5, flexWrap: 'wrap' }}>
+                    <Text>{tripData.user.first_name} {tripData.user.last_name}</Text>
+                    <Text bold>{tripData.user.mobile}</Text>
+                  </View>}
+                </View>
+                <HStack space={4} alignItems="center">
+                  <IconButton onPress={() => {
+                    Linking.openURL(`tel:${tripData.user.mobile}`)
+                  }} size="md" backgroundColor={colors.primary} borderRadius={10} variant="solid" _icon={{
                     as: MaterialIcons,
-                    name: "email",
+                    name: "phone",
                     color: colors.white,
                     size: 22
                   }} />
-              </HStack>
-            </View>}
+                  <IconButton onPress={() => Linking.openURL(`mailto:${tripData.user.email}`)}
+                    size="md" backgroundColor={colors.primary} borderRadius={10} variant="solid" _icon={{
+                      as: MaterialIcons,
+                      name: "email",
+                      color: colors.white,
+                      size: 22
+                    }} />
+                </HStack>
+              </View>}
 
-          <Text color={colors.primary}>{tripData.date}</Text>
+            <Text color={colors.primary}>{tripData.date}</Text>
 
-          {tripData.status != "PICKEDUP" && <View style={{ marginTop: 16, flexDirection: 'row' }}>
-            <View style={{ flex: 1 }}>
-              <Text bold fontSize={normalize(16)}>{tripData.out_leave}</Text>
-              <Text color={colors.grey2} fontSize={normalize(10)}>{tripData.s_address}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={styles.durationBox}>
-                <Text textAlign={'center'} color={colors.grey2}>{tripData.out_leave_hours}</Text>
-              </View>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text bold fontSize={normalize(16)}>{tripData.adjusted_out_leave}</Text>
-              <Text color={colors.grey2} fontSize={normalize(10)} >{tripData.d_address}</Text>
-            </View>
-          </View>}
-          {tripData.service_required == "outstation" && tripData.status != "PICKEDUP" &&
-            <View style={{ marginTop: 16, flexDirection: 'row' }}>
+            {tripData.status != "PICKEDUP" && <View style={{ marginTop: 16, flexDirection: 'row' }}>
               <View style={{ flex: 1 }}>
-                <Text bold fontSize={normalize(16)}>{tripData.out_return}</Text>
-                <Text color={colors.grey2} fontSize={normalize(10)}>{tripData.d_address}</Text>
+                <Text bold fontSize={normalize(16)}>{tripData.out_leave}</Text>
+                <Text color={colors.grey2} fontSize={normalize(10)}>{tripData.s_address}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.durationBox}>
-                  <Text textAlign={'center'} color={colors.grey2}>{tripData.out_return_hours}</Text>
+                  <Text textAlign={'center'} color={colors.grey2}>{tripData.out_leave_hours}</Text>
                 </View>
               </View>
               <View style={{ flex: 1 }}>
-                <Text bold fontSize={normalize(16)}>{tripData.adjusted_out_return}</Text>
-                <Text color={colors.grey2} fontSize={normalize(10)} >{tripData.s_address}</Text>
+                <Text bold fontSize={normalize(16)}>{tripData.adjusted_out_leave}</Text>
+                <Text color={colors.grey2} fontSize={normalize(10)} >{tripData.d_address}</Text>
               </View>
             </View>}
-          <View style={{ marginTop: 16, flexDirection: 'row' }}>
-            <View style={{ flexDirection: 'row', flex: 2 }}>
-              <View style={styles.smallTagFilled}>
-                <Text>{tripData.assigned_nurse}</Text>
-              </View>
-              <View style={styles.smallTag}>
-                <Text>{tripData.service_required == "outstation" ? this.props.t('roundTrip') : this.props.t('oneTrip')}</Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', flex: 1, justifyContent: 'flex-end' }}>
-              {tripData.paid == 1 && <View style={styles.smallTagFilledGreen}>
-                <Text color={colors.white}>{this.props.t('paid')}</Text>
+            {tripData.service_required == "outstation" && tripData.status != "PICKEDUP" &&
+              <View style={{ marginTop: 16, flexDirection: 'row' }}>
+                <View style={{ flex: 1 }}>
+                  <Text bold fontSize={normalize(16)}>{tripData.out_return}</Text>
+                  <Text color={colors.grey2} fontSize={normalize(10)}>{tripData.d_address}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.durationBox}>
+                    <Text textAlign={'center'} color={colors.grey2}>{tripData.out_return_hours}</Text>
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text bold fontSize={normalize(16)}>{tripData.adjusted_out_return}</Text>
+                  <Text color={colors.grey2} fontSize={normalize(10)} >{tripData.s_address}</Text>
+                </View>
               </View>}
-              <View style={styles.smallTagBlackBorder}>
-                <Text>{tripData.payment_mode}</Text>
+            <View style={{ marginTop: 16, flexDirection: 'row' }}>
+              <View style={{ flexDirection: 'row', flex: 2 }}>
+                <View style={styles.smallTagFilled}>
+                  <Text>{tripData.assigned_nurse}</Text>
+                </View>
+                <View style={styles.smallTag}>
+                  <Text>{tripData.service_required == "outstation" ? this.props.t('roundTrip') : this.props.t('oneTrip')}</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', flex: 1, justifyContent: 'flex-end' }}>
+                {tripData.paid == 1 && <View style={styles.smallTagFilledGreen}>
+                  <Text color={colors.white}>{this.props.t('paid')}</Text>
+                </View>}
+                <View style={styles.smallTagBlackBorder}>
+                  <Text>{tripData.payment_mode}</Text>
+                </View>
               </View>
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', marginTop: 16 }}>
-            <View style={{ flexDirection: 'row', flex: 1 }}>
-              <View style={{ flexDirection: 'row', marginHorizontal: 10, alignItems: 'center' }}>
-                <MaterialCommunityIcons color={colors.primary} size={16} style={{ alignSelf: 'center', marginHorizontal: 5 }} name={'chart-timeline-variant'}></MaterialCommunityIcons>
-                <Text bold >{tripData.distance} km</Text>
+            <View style={{ flexDirection: 'row', marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', flex: 1 }}>
+                <View style={{ flexDirection: 'row', marginHorizontal: 10, alignItems: 'center' }}>
+                  <MaterialCommunityIcons color={colors.primary} size={16} style={{ alignSelf: 'center', marginHorizontal: 5 }} name={'chart-timeline-variant'}></MaterialCommunityIcons>
+                  <Text bold >{tripData.distance} km</Text>
+                </View>
+                <View style={{ flexDirection: 'row', marginHorizontal: 10, alignItems: 'center' }}>
+                  <Icon color={colors.primary} size={16} style={{ alignSelf: 'center', marginHorizontal: 5 }} name={'clockcircleo'}></Icon>
+                  <Text bold >{tripData.travel_time}</Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', marginHorizontal: 10, alignItems: 'center' }}>
-                <Icon color={colors.primary} size={16} style={{ alignSelf: 'center', marginHorizontal: 5 }} name={'clockcircleo'}></Icon>
-                <Text bold >{tripData.travel_time}</Text>
-              </View>
+              {tripData.status != "PICKEDUP" && <Text fontSize={normalize(16)} bold >{tripData.amount} {this.props.t('sar')}</Text>}
             </View>
-            {tripData.status != "PICKEDUP" && <Text fontSize={normalize(16)} bold >{tripData.amount} {this.props.t('sar')}</Text>}
+            <View style={{ marginTop: 10 }}>
+              {
+                !(tripData.status == "DROPPED" && tripData.payment_mode !== "CASH") &&
+                <Button
+                  onPress={() => {
+                    this.updateTripPressed();
+                    // this.updateTrip(tripData.id)
+                  }}
+                  disabled={this.state.loading}
+                  isLoading={this.state.loading}
+                  style={styles.drbButton}
+                  size="md"
+                  _text={{
+                    color: colors.white,
+                    fontSize: normalize(12), fontWeight: 'bold',
+                  }}
+                >
+                  {
+                  tripData.status == "ARRIVED" ? this.props.t('PICKEDUP') : 
+                  tripData.status == "PICKEDUP" ? this.props.t('DROPPOFF') : 
+                  tripData.status == "DROPPED" ? (tripData.payment_mode == "CASH" ? this.props.t('PAID') : this.props.t('PAYMENT')) : 
+                  tripData.status == "PAYMENT" ? this.props.t('COMPLETE') : 
+                  tripData.status == "COMPLETED" ? this.props.t('COMPLETED') : this.props.t('arrived')}
+                </Button>
+              }
+              {tripData.status != "PICKEDUP" &&
+                <TouchableOpacity onPress={() => {
+                  this.props.navigation.navigate('Complaint', { tripData: tripData })
+                }} style={{ padding: 10 }}>
+                  <Text style={{ textAlign: 'center', color: colors.red }}>{this.props.t('complaint')}</Text>
+                </TouchableOpacity>}
+            </View>
           </View>
-          <View style={{ marginTop: 10 }}>
-            <Button
-              onPress={() => {
-                this.updateTripPressed();
-                // this.updateTrip(tripData.id)
-              }}
-              disabled={this.state.loading}
-              isLoading={this.state.loading}
-              style={styles.drbButton}
-              size="md"
-              _text={{
-                color: colors.white,
-                fontSize: normalize(12), fontWeight: 'bold',
-              }}
-            >
-              {tripData.status == "PICKEDUP" ? this.props.t('completeTheTrip') : this.props.t('startNavigation')}
-            </Button>
-            {tripData.status != "PICKEDUP" &&
-              <TouchableOpacity onPress={() => {
-                this.props.navigation.navigate('Complaint', { tripData: tripData })
-              }} style={{ padding: 10 }}>
-                <Text style={{ textAlign: 'center', color: colors.red }}>{this.props.t('complaint')}</Text>
-              </TouchableOpacity>}
-          </View>
-        </View>
+        }
         <AlertDialog isOpen={this.state.successAlert}>
           <AlertDialog.Content style={{ borderRadius: 10, padding: 10, backgroundColor: colors.white }}>
             <AlertDialog.Body style={{ backgroundColor: colors.white, }} >
@@ -590,15 +621,15 @@ class Trip extends Component {
                   onPress={() => {
                     this.setState({ successAlert: false })
 
-                    if (tripData.status != 'PICKEDUP') {
-                      this.locationPress(tripData)
-                      this.props.navigation.goBack();
-                    } else {
-                      if (this.props.route.params != null) {
-                        this.props.route.params.clickedYes(true);
-                      }
-                      this.props.navigation.goBack();
-                    }
+                    // if (tripData.status != 'PICKEDUP') {
+                    //   this.locationPress(tripData)
+                    //   this.props.navigation.goBack();
+                    // } else {
+                    //   if (this.props.route.params != null) {
+                    //     this.props.route.params.clickedYes(true);
+                    //   }
+                    //   this.props.navigation.goBack();
+                    // }
                   }
                   }
                   _text={{ fontSize: normalize(12), fontFamily: helpers.getFont() }}>
@@ -629,6 +660,33 @@ class Trip extends Component {
             </AlertDialog.Footer>
           </AlertDialog.Content>
         </AlertDialog>
+        <AlertDialog isOpen={this.state.startNavigationDialog}>
+          <AlertDialog.Content style={{ borderRadius: 10, padding: 10, backgroundColor: colors.white }}>
+            <AlertDialog.Body style={{ backgroundColor: colors.white, }} >
+              <Text style={{
+                fontSize: normalize(12),
+                lineHeight: 30,
+                textAlign: 'center', fontFamily: helpers.getFont()
+              }}>{this.state.message}</Text>
+            </AlertDialog.Body >
+            <AlertDialog.Footer style={{ borderTopColor: colors.white, backgroundColor: colors.white }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', flex: 1 }}>
+                <Button
+                  style={{ flex: 1, backgroundColor: colors.secondary }}
+                  onPress={() => {
+                    this.setState({ startNavigationDialog: false })
+                    this.locationPress(tripData)
+                    // this.props.navigation.goBack();
+                  }
+                  }
+                  _text={{ fontSize: normalize(12), fontFamily: helpers.getFont() }}>
+                  {this.props.t("startNavigation")}
+                </Button>
+              </View>
+            </AlertDialog.Footer>
+          </AlertDialog.Content>
+        </AlertDialog>
+
       </NativeBaseProvider >
     );
   }
