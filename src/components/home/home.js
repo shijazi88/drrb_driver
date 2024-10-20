@@ -408,12 +408,19 @@ class Home extends Component {
       this.props.navigation.goBack()
     }
 
-    const locationPress = (data) => {
+    const locationPress = (data, type) => {
 
-      console.log(data)
       let latitude = data.d_latitude
       let longitude = data.d_longitude
 
+      if(type == "uocomingTrip" && data.status !== "PICKEDUP"){
+        latitude = data.s_latitude
+        longitude = data.s_longitude
+      }else if(type != "uocomingTrip"){
+        latitude = data.track_latitude
+        longitude = data.track_longitude
+      }
+     
       const url = Platform.select({
         ios: `comgooglemaps://?center=${latitude},${longitude}&q=${latitude},${longitude}&zoom=14&views=traffic"`,
         android: `geo://?q=${latitude},${longitude}`,
@@ -527,7 +534,7 @@ class Home extends Component {
                       disabled={selectedFilter.value != "uocomingTrip"}
                       onPress={() => this.props.navigation.navigate('Trip', { tripData: item, clickedYes: changeActiveTab })}
                       key={item.id}>
-                      <TripItem locationPress={() => locationPress(item)} type={selectedFilter.value} props={this.props} data={item}
+                      <TripItem locationPress={() => locationPress(item, selectedFilter.value)} type={selectedFilter.value} props={this.props} data={item}
                       />
                     </TouchableOpacity>}
                     showsVerticalScrollIndicator={false}
